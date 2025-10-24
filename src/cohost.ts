@@ -1,0 +1,255 @@
+import { Config, Message, ChatMessage } from './types';
+import { ClaudeService } from './services/claude';
+import { MemoryService } from './services/memory';
+import { WhisperService } from './services/whisper';
+import { TTSService } from './services/tts';
+import { OBSController } from './services/obs';
+import { TwitchChatService } from './services/twitch';
+
+export class CoHost {
+  private config: Config;
+  private claude: ClaudeService;
+  private memory: MemoryService;
+  private whisper: WhisperService;
+  private tts: TTSService;
+  private obs: OBSController;
+  private twitch: TwitchChatService;
+  private lastResponseTime: number = 0;
+  private isProcessing: boolean = false;
+
+  constructor(config: Config) {
+    this.config = config;
+
+    // Initialize services
+    this.claude = new ClaudeService(config);
+    this.memory = new MemoryService(config);
+    this.whisper = new WhisperService(config);
+    this.tts = new TTSService(config);
+    this.obs = new OBSController(config);
+    this.twitch = new TwitchChatService(config);
+
+    this.setupEventHandlers();
+  }
+
+  private setupEventHandlers(): void {
+    // Handle Twitch chat messages
+    this.twitch.on('message', (chatMessage: ChatMessage) => {
+      this.handleChatMessage(chatMessage);
+    });
+
+    // Handle Twitch events
+    this.twitch.on('subscription', (data: any) => {
+      this.handleSpecialEvent('subscription', `${data.username} just subscribed!`);
+    });
+
+    this.twitch.on('cheer', (data: any) => {
+      this.handleSpecialEvent('cheer', `${data.username} cheered ${data.bits} bits!`);
+    });
+
+    this.twitch.on('raid', (data: any) => {
+      this.handleSpecialEvent('raid', `${data.username} raided with ${data.viewers} viewers!`);
+    });
+  }
+
+  async start(): Promise<void> {
+    console.log(`\n🎬 Starting ${this.config.cohost.name}...\n`);
+
+    // Connect to OBS
+    try {
+      await this.obs.connect();
+      console.log('✅ OBS connected\n');
+    } catch (error) {
+      console.error('❌ Failed to connect to OBS:', error);
+      console.log('⚠️  Continuing without OBS...\n');
+    }
+
+    // Connect to Twitch
+    try {
+      await this.twitch.connect();
+      console.log('✅ Twitch connected\n');
+    } catch (error) {
+      console.error('❌ Failed to connect to Twitch:', error);
+      throw error;
+    }
+
+    // Check Whisper availability
+    if (this.whisper.isAvailable()) {
+      console.log('✅ Whisper CPP available\n');
+    } else {
+      console.log('⚠️  Whisper CPP not found at configured path\n');
+    }
+
+    console.log(`🤖 ${this.config.cohost.name} is now live!\n`);
+    console.log('Commands:');
+    console.log('  - Type messages to test Claude responses');
+    console.log('  - Chat messages will be processed automatically');
+    console.log('  - Use Ctrl+C to exit\n');
+  }
+
+  async stop(): Promise<void> {
+    console.log(`\n👋 Shutting down ${this.config.cohost.name}...\n`);
+
+    await this.twitch.disconnect();
+    await this.obs.disconnect();
+
+    console.log('Goodbye!\n');
+  }
+
+  private async handleChatMessage(chatMessage: ChatMessage): Promise<void> {
+    // Check cooldown
+    const now = Date.now();
+    if (now - this.lastResponseTime < this.config.cohost.responseCooldown) {
+      return;
+    }
+
+    // Avoid responding to every single message - only respond to questions or mentions
+    const message = chatMessage.message.toLowerCase();
+    const shouldRespond =
+      message.includes('?') ||
+      message.includes(this.config.cohost.name.toLowerCase()) ||
+      message.includes('cohost') ||
+      message.includes('@' + this.config.twitch.botUsername.toLowerCase());
+
+    if (!shouldRespond) {
+      // Still add to memory but don't respond
+      this.memory.addMessage({
+        role: 'user',
+        content: `${chatMessage.username}: ${chatMessage.message}`,
+        timestamp: chatMessage.timestamp,
+        source: 'chat',
+        username: chatMessage.username,
+      });
+      return;
+    }
+
+    await this.processInput(
+      chatMessage.message,
+      'chat',
+      chatMessage.username
+    );
+  }
+
+  private async handleSpecialEvent(eventType: string, message: string): Promise<void> {
+    console.log(`[Event] ${eventType}: ${message}`);
+
+    // Add to memory
+    this.memory.addMessage({
+      role: 'system',
+      content: `[${eventType}] ${message}`,
+      timestamp: new Date(),
+      source: 'system',
+    });
+
+    // Generate a response to the event
+    await this.processInput(
+      `A special event happened: ${message}. Please acknowledge this briefly.`,
+      'system'
+    );
+  }
+
+  async processInput(
+    input: string,
+    source: 'chat' | 'voice' | 'system' = 'chat',
+    username?: string
+  ): Promise<void> {
+    if (this.isProcessing) {
+      console.log('[CoHost] Already processing, skipping...');
+      return;
+    }
+
+    this.isProcessing = true;
+
+    try {
+      // Add user message to memory
+      const userMessage: Message = {
+        role: 'user',
+        content: username ? `${username}: ${input}` : input,
+        timestamp: new Date(),
+        source,
+        username,
+      };
+
+      this.memory.addMessage(userMessage);
+
+      // Get context
+      const context = this.memory.getContextSummary();
+
+      // Generate response
+      console.log(`\n[CoHost] Generating response...`);
+      const response = await this.claude.generateResponse(
+        this.memory.getRecentMessages(),
+        context
+      );
+
+      console.log(`[CoHost] ${this.config.cohost.name}: ${response}\n`);
+
+      // Add assistant response to memory
+      this.memory.addMessage({
+        role: 'assistant',
+        content: response,
+        timestamp: new Date(),
+        source: 'system',
+      });
+
+      // Check for OBS commands
+      if (this.obs.isConnected()) {
+        const commandAnalysis = await this.claude.analyzeForOBSCommands(response);
+        if (commandAnalysis.hasCommand && commandAnalysis.command) {
+          console.log(
+            `[CoHost] Executing OBS command: ${commandAnalysis.command} ${commandAnalysis.parameter || ''}`
+          );
+          await this.obs.executeCommand(
+            commandAnalysis.command,
+            commandAnalysis.parameter
+          );
+        }
+      }
+
+      // Send to Twitch chat if from chat
+      if (source === 'chat' && this.twitch.isConnected()) {
+        await this.twitch.sendMessage(response);
+      }
+
+      // Speak the response
+      await this.tts.speakAsync(response);
+
+      this.lastResponseTime = Date.now();
+    } catch (error) {
+      console.error('[CoHost] Error processing input:', error);
+    } finally {
+      this.isProcessing = false;
+    }
+  }
+
+  async processVoiceInput(audioFilePath: string): Promise<void> {
+    try {
+      console.log('[CoHost] Transcribing audio...');
+      const transcription = await this.whisper.transcribe(audioFilePath);
+
+      if (transcription.text.trim()) {
+        console.log(`[Voice] Transcribed: "${transcription.text}"`);
+        await this.processInput(transcription.text, 'voice');
+      }
+    } catch (error) {
+      console.error('[CoHost] Error processing voice input:', error);
+    }
+  }
+
+  getMemoryStats() {
+    return this.memory.getStats();
+  }
+
+  async listOBSScenes(): Promise<string[]> {
+    if (!this.obs.isConnected()) {
+      throw new Error('OBS not connected');
+    }
+    return await this.obs.listScenes();
+  }
+
+  async getCurrentOBSScene(): Promise<string> {
+    if (!this.obs.isConnected()) {
+      throw new Error('OBS not connected');
+    }
+    return await this.obs.getCurrentScene();
+  }
+}
