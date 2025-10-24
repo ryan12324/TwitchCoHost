@@ -39,4 +39,9 @@ temp/
 # Memory/database files
 *.db
 *.sqlite
+*.lance
 memory/
+
+# Transformer models cache
+.cache/
+huggingface/

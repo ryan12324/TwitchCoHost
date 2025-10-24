@@ -87,6 +87,7 @@ async function handleCommand(command: string, cohost: CoHost) {
         console.log('\nAvailable commands:');
         console.log('  /help                 - Show this help message');
         console.log('  /stats                - Show memory statistics');
+        console.log('  /search <query>       - Semantic search through memory');
         console.log('  /scenes               - List OBS scenes');
         console.log('  /scene                - Show current OBS scene');
         console.log('  /quit or /exit        - Exit the application');
@@ -94,12 +95,36 @@ async function handleCommand(command: string, cohost: CoHost) {
         break;
 
       case 'stats':
-        const stats = cohost.getMemoryStats();
+        const stats = await cohost.getMemoryStats();
         console.log('\n📊 Memory Statistics:');
         console.log(`  Total messages: ${stats.totalMessages}`);
         console.log('  By source:', stats.bySource);
         console.log('  By role:', stats.byRole);
         console.log('');
+        break;
+
+      case 'search':
+        if (args.length === 0) {
+          console.log('\n❌ Please provide a search query\n');
+          console.log('Usage: /search <query>');
+          console.log('Example: /search what games did we discuss?\n');
+          break;
+        }
+        const query = args.join(' ');
+        console.log(`\n🔍 Searching for: "${query}"\n`);
+        const results = await cohost.searchMemory(query, 5);
+        if (results.length === 0) {
+          console.log('No results found.\n');
+        } else {
+          console.log(`Found ${results.length} similar messages:\n`);
+          results.forEach((msg, i) => {
+            const timestamp = msg.timestamp.toLocaleString();
+            const source = msg.source ? `[${msg.source}]` : '';
+            const user = msg.username ? `${msg.username}: ` : '';
+            console.log(`  ${i + 1}. ${source} ${timestamp}`);
+            console.log(`     ${user}${msg.content}\n`);
+          });
+        }
         break;
 
       case 'scenes':

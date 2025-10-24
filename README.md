@@ -5,10 +5,12 @@ An intelligent AI cohost for VTuber streams that uses Claude AI, Whisper CPP for
 ## Features
 
 - **AI Responses**: Powered by Claude AI (Anthropic) for natural, contextual conversations
+- **Semantic Memory**: LanceDB vector database with AI embeddings for intelligent context retrieval
+- **Smart Context**: Retrieves relevant conversation history based on meaning, not just recency
+- **Semantic Search**: Search through conversation history using natural language queries
 - **Speech Recognition**: Whisper CPP integration for transcribing voice input
 - **Chat Integration**: Read and respond to Twitch chat messages
 - **OBS Control**: Control OBS scenes, sources, and streaming/recording via WebSocket
-- **Conversation Memory**: Persistent memory system to track conversation history and context
 - **Text-to-Speech**: Multiple TTS options (browser, system, ElevenLabs)
 - **Event Handling**: React to subscriptions, cheers, raids, and other Twitch events
 
@@ -19,7 +21,8 @@ TwitchCoHost/
 ├── src/
 │   ├── services/
 │   │   ├── claude.ts       # Claude AI integration
-│   │   ├── memory.ts       # Conversation memory management
+│   │   ├── embeddings.ts   # Vector embeddings for semantic search
+│   │   ├── memory.ts       # LanceDB-powered conversation memory
 │   │   ├── whisper.ts      # Whisper CPP speech-to-text
 │   │   ├── tts.ts          # Text-to-speech engines
 │   │   ├── obs.ts          # OBS WebSocket controller
@@ -28,6 +31,7 @@ TwitchCoHost/
 │   ├── config.ts           # Configuration loader
 │   ├── cohost.ts           # Main CoHost orchestrator
 │   └── index.ts            # Application entry point
+├── memory/                 # LanceDB vector database (auto-created)
 ├── .env                    # Your configuration (not in git)
 ├── .env.example            # Example configuration
 └── package.json
@@ -169,9 +173,17 @@ While running, you can use these commands in the terminal:
 ```
 /help                 - Show available commands
 /stats                - Display memory statistics
+/search <query>       - Semantic search through conversation history
 /scenes               - List all OBS scenes
 /scene                - Show current OBS scene
 /quit or /exit        - Exit the application
+```
+
+Example semantic search:
+```
+/search what games did we discuss?
+/search funny moments from the stream
+/search when did someone mention pokemon?
 ```
 
 ### Chat Interaction
@@ -216,14 +228,38 @@ The system supports multiple TTS engines:
 2. **System** - Uses `say` (macOS) or `espeak` (Linux)
 3. **ElevenLabs** - High-quality AI voices (requires API key)
 
-### Memory Management
+### Semantic Memory with LanceDB
 
-The CoHost maintains conversation history:
+The CoHost uses **LanceDB**, an open-source vector database, for intelligent memory management:
 
-- Stores up to `MEMORY_MAX_MESSAGES` messages
-- Uses last `MEMORY_CONTEXT_WINDOW` messages for context
-- Persists to disk in `memory/conversation.json`
-- Tracks message sources (chat, voice, system)
+#### How It Works
+
+1. **Vector Embeddings**: Every message is converted to a vector embedding using a local transformer model (all-MiniLM-L6-v2)
+2. **Semantic Storage**: Messages are stored in LanceDB with their embeddings
+3. **Smart Retrieval**: Context is retrieved based on semantic similarity, not just recency
+4. **Persistent Storage**: All conversations are stored in `memory/lancedb/` directory
+
+#### Key Features
+
+- **Semantic Search**: Find messages by meaning, not exact keywords
+  ```typescript
+  // Search for similar topics
+  await cohost.searchMemory("what games did we play?");
+  ```
+
+- **Contextual Responses**: AI retrieves relevant past conversations automatically
+  - If discussing "Minecraft", it recalls previous Minecraft conversations
+  - Understands synonyms and related topics
+
+- **Memory Limits**:
+  - Stores up to `MEMORY_MAX_MESSAGES` messages
+  - Uses `MEMORY_CONTEXT_WINDOW` recent + semantically relevant messages
+  - Automatically trims old messages while preserving important context
+
+- **Local Processing**:
+  - Embeddings generated locally (no external API calls)
+  - Privacy-friendly - all data stays on your machine
+  - Fast and efficient
 
 ## Integration with VTuber Software
 
@@ -320,7 +356,8 @@ class CoHost {
   async stop(): Promise<void>
   async processInput(input: string, source?: 'chat' | 'voice' | 'system', username?: string): Promise<void>
   async processVoiceInput(audioFilePath: string): Promise<void>
-  getMemoryStats(): Object
+  async getMemoryStats(): Promise<Object>
+  async searchMemory(query: string, limit?: number): Promise<Message[]>
   async listOBSScenes(): Promise<string[]>
   async getCurrentOBSScene(): Promise<string>
 }
@@ -342,6 +379,8 @@ MIT License - See LICENSE file for details
 ## Credits
 
 - **Claude AI** by Anthropic
+- **LanceDB** - Open-source vector database
+- **Transformers.js** - Local AI embeddings
 - **Whisper CPP** by Georgi Gerganov
 - **OBS WebSocket** by the OBS Project
 - **TMI.js** for Twitch chat

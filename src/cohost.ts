@@ -54,6 +54,15 @@ export class CoHost {
   async start(): Promise<void> {
     console.log(`\n🎬 Starting ${this.config.cohost.name}...\n`);
 
+    // Initialize memory with LanceDB
+    try {
+      await this.memory.initialize();
+      console.log('✅ Memory system initialized\n');
+    } catch (error) {
+      console.error('❌ Failed to initialize memory:', error);
+      throw error;
+    }
+
     // Connect to OBS
     try {
       await this.obs.connect();
@@ -112,7 +121,7 @@ export class CoHost {
 
     if (!shouldRespond) {
       // Still add to memory but don't respond
-      this.memory.addMessage({
+      await this.memory.addMessage({
         role: 'user',
         content: `${chatMessage.username}: ${chatMessage.message}`,
         timestamp: chatMessage.timestamp,
@@ -133,7 +142,7 @@ export class CoHost {
     console.log(`[Event] ${eventType}: ${message}`);
 
     // Add to memory
-    this.memory.addMessage({
+    await this.memory.addMessage({
       role: 'system',
       content: `[${eventType}] ${message}`,
       timestamp: new Date(),
@@ -169,22 +178,22 @@ export class CoHost {
         username,
       };
 
-      this.memory.addMessage(userMessage);
+      await this.memory.addMessage(userMessage);
 
-      // Get context
-      const context = this.memory.getContextSummary();
+      // Get context with semantic relevance
+      const context = await this.memory.getContextSummary(input);
 
       // Generate response
       console.log(`\n[CoHost] Generating response...`);
       const response = await this.claude.generateResponse(
-        this.memory.getRecentMessages(),
+        await this.memory.getRecentMessages(),
         context
       );
 
       console.log(`[CoHost] ${this.config.cohost.name}: ${response}\n`);
 
       // Add assistant response to memory
-      this.memory.addMessage({
+      await this.memory.addMessage({
         role: 'assistant',
         content: response,
         timestamp: new Date(),
@@ -235,8 +244,12 @@ export class CoHost {
     }
   }
 
-  getMemoryStats() {
-    return this.memory.getStats();
+  async getMemoryStats() {
+    return await this.memory.getStats();
+  }
+
+  async searchMemory(query: string, limit: number = 5) {
+    return await this.memory.searchSimilar(query, limit);
   }
 
   async listOBSScenes(): Promise<string[]> {

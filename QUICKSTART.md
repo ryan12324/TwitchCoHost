@@ -85,6 +85,7 @@ The CoHost should respond! You can also use:
 ```
 /help      - See all commands
 /stats     - View statistics
+/search    - Semantic search (e.g., /search what did we talk about?)
 /scenes    - List OBS scenes
 ```
 
@@ -92,8 +93,17 @@ The CoHost should respond! You can also use:
 
 1. Test Twitch chat integration by sending messages in your channel
 2. Try OBS commands: "switch to gameplay scene"
-3. Configure your TTS engine in `.env`
-4. Set up voice input for full VTuber integration
+3. Try semantic search: `/search gaming topics`
+4. Configure your TTS engine in `.env`
+5. Set up voice input for full VTuber integration
+
+## New: Semantic Memory
+
+The CoHost now uses **LanceDB** for intelligent memory:
+- Remembers conversations by meaning, not just recency
+- Search past conversations with natural language
+- Automatically downloads AI models on first run (may take a minute)
+- All data stored locally for privacy
 
 ## Common Issues
 
