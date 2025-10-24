@@ -50,5 +50,9 @@ export function loadConfig(): Config {
       personality: process.env.COHOST_PERSONALITY || 'friendly and helpful AI assistant',
       responseCooldown: parseInt(process.env.RESPONSE_COOLDOWN_MS || '3000'),
     },
+    vtubeStudio: {
+      websocketUrl: process.env.VTUBE_STUDIO_URL || 'ws://localhost:8001',
+      enabled: process.env.VTUBE_STUDIO_ENABLED === 'true',
+    },
   };
 }

@@ -98,4 +98,99 @@ Remember: You are speaking in a live stream context, so be conversational and ti
 
     return { hasCommand: false };
   }
+
+  /**
+   * Analyze text for emotional content and suggest avatar expressions
+   */
+  analyzeEmotion(text: string): {
+    emotion: string;
+    confidence: number;
+    animations?: string[];
+  } {
+    const textLower = text.toLowerCase();
+
+    // Emotion patterns with keywords and animations
+    const emotionPatterns = [
+      {
+        emotion: 'happy',
+        keywords: ['happy', 'excited', 'great', 'awesome', 'wonderful', 'amazing', 'love', 'haha', 'lol', 'yay', '!', 'fantastic'],
+        animations: ['wave', 'clap', 'celebrate'],
+        weight: 0,
+      },
+      {
+        emotion: 'sad',
+        keywords: ['sad', 'sorry', 'unfortunately', 'apologize', 'aw', 'oh no', 'disappointed'],
+        animations: ['sigh', 'head_down'],
+        weight: 0,
+      },
+      {
+        emotion: 'surprised',
+        keywords: ['wow', 'whoa', 'omg', 'amazing', 'incredible', 'unbelievable', 'seriously', '!?', 'what'],
+        animations: ['gasp', 'jump'],
+        weight: 0,
+      },
+      {
+        emotion: 'confused',
+        keywords: ['confused', 'hmm', 'not sure', 'maybe', 'perhaps', 'wondering', '?'],
+        animations: ['think', 'tilt_head'],
+        weight: 0,
+      },
+      {
+        emotion: 'angry',
+        keywords: ['angry', 'mad', 'annoyed', 'frustrated', 'ugh', 'grr'],
+        animations: ['shake_head', 'cross_arms'],
+        weight: 0,
+      },
+      {
+        emotion: 'love',
+        keywords: ['love', 'adore', 'heart', 'sweet', 'cute', 'aww', '<3'],
+        animations: ['heart', 'blush'],
+        weight: 0,
+      },
+      {
+        emotion: 'thinking',
+        keywords: ['think', 'consider', 'let me', "let's see", 'well', 'actually'],
+        animations: ['think', 'look_up'],
+        weight: 0,
+      },
+    ];
+
+    // Calculate weights based on keyword matches
+    for (const pattern of emotionPatterns) {
+      for (const keyword of pattern.keywords) {
+        if (textLower.includes(keyword)) {
+          pattern.weight += 1;
+          // Bonus weight for multiple exclamation marks or question marks
+          if (keyword === '!' && (text.match(/!/g) || []).length > 1) {
+            pattern.weight += 1;
+          }
+          if (keyword === '?' && (text.match(/\?/g) || []).length > 1) {
+            pattern.weight += 1;
+          }
+        }
+      }
+    }
+
+    // Find highest scoring emotion
+    const sorted = emotionPatterns.sort((a, b) => b.weight - a.weight);
+    const topEmotion = sorted[0];
+
+    // If no strong emotion detected, return neutral
+    if (topEmotion.weight === 0) {
+      return {
+        emotion: 'neutral',
+        confidence: 1.0,
+      };
+    }
+
+    // Calculate confidence (normalize weight)
+    const maxPossibleWeight = topEmotion.keywords.length;
+    const confidence = Math.min(topEmotion.weight / maxPossibleWeight, 1.0);
+
+    return {
+      emotion: topEmotion.emotion,
+      confidence,
+      animations: topEmotion.animations,
+    };
+  }
 }

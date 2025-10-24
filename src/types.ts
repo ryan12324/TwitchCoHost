@@ -29,6 +29,10 @@ export interface Config {
     personality: string;
     responseCooldown: number;
   };
+  vtubeStudio: {
+    websocketUrl: string;
+    enabled: boolean;
+  };
 }
 
 export interface Message {
@@ -68,4 +72,10 @@ export enum OBSCommand {
   STOP_STREAM = 'stop_stream',
   START_RECORDING = 'start_recording',
   STOP_RECORDING = 'stop_recording',
+}
+
+export interface EmotionAnalysis {
+  emotion: string;
+  confidence: number;
+  animations?: string[];
 }

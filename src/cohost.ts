@@ -5,6 +5,7 @@ import { WhisperService } from './services/whisper';
 import { TTSService } from './services/tts';
 import { OBSController } from './services/obs';
 import { TwitchChatService } from './services/twitch';
+import { VTubeStudioController } from './services/vtube-studio';
 
 export class CoHost {
   private config: Config;
@@ -14,6 +15,7 @@ export class CoHost {
   private tts: TTSService;
   private obs: OBSController;
   private twitch: TwitchChatService;
+  private vtubeStudio: VTubeStudioController;
   private lastResponseTime: number = 0;
   private isProcessing: boolean = false;
 
@@ -27,6 +29,7 @@ export class CoHost {
     this.tts = new TTSService(config);
     this.obs = new OBSController(config);
     this.twitch = new TwitchChatService(config);
+    this.vtubeStudio = new VTubeStudioController(config);
 
     this.setupEventHandlers();
   }
@@ -61,6 +64,17 @@ export class CoHost {
     } catch (error) {
       console.error('❌ Failed to initialize memory:', error);
       throw error;
+    }
+
+    // Connect to VTube Studio
+    if (this.config.vtubeStudio.enabled) {
+      try {
+        await this.vtubeStudio.connect();
+        console.log('✅ VTube Studio connected\n');
+      } catch (error) {
+        console.error('❌ Failed to connect to VTube Studio:', error);
+        console.log('⚠️  Continuing without VTube Studio...\n');
+      }
     }
 
     // Connect to OBS
@@ -100,6 +114,9 @@ export class CoHost {
 
     await this.twitch.disconnect();
     await this.obs.disconnect();
+    if (this.config.vtubeStudio.enabled) {
+      await this.vtubeStudio.disconnect();
+    }
 
     console.log('Goodbye!\n');
   }
@@ -199,6 +216,31 @@ export class CoHost {
         timestamp: new Date(),
         source: 'system',
       });
+
+      // Analyze emotion and update avatar
+      if (this.config.vtubeStudio.enabled && this.vtubeStudio.isConnected()) {
+        const emotionAnalysis = this.claude.analyzeEmotion(response);
+        console.log(
+          `[CoHost] Detected emotion: ${emotionAnalysis.emotion} (confidence: ${(emotionAnalysis.confidence * 100).toFixed(0)}%)`
+        );
+
+        // Set avatar expression based on emotion
+        try {
+          await this.vtubeStudio.setEmotion(emotionAnalysis.emotion);
+
+          // Trigger animation if suggested
+          if (emotionAnalysis.animations && emotionAnalysis.animations.length > 0) {
+            // Pick a random animation from suggestions
+            const animation =
+              emotionAnalysis.animations[
+                Math.floor(Math.random() * emotionAnalysis.animations.length)
+              ];
+            await this.vtubeStudio.triggerAnimation(animation);
+          }
+        } catch (error) {
+          console.error('[CoHost] Error controlling VTube Studio:', error);
+        }
+      }
 
       // Check for OBS commands
       if (this.obs.isConnected()) {

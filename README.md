@@ -1,10 +1,11 @@
 # VTuber CoHost - AI-Powered Stream Assistant
 
-An intelligent AI cohost for VTuber streams that uses Claude AI, Whisper CPP for speech recognition, and integrates with OBS and Twitch chat.
+An intelligent AI cohost for VTuber streams that uses Claude AI, Whisper CPP for speech recognition, and integrates with VTube Studio, OBS, and Twitch chat.
 
 ## Features
 
 - **AI Responses**: Powered by Claude AI (Anthropic) for natural, contextual conversations
+- **VTube Studio Integration**: Automatic avatar expressions and animations based on AI emotion detection
 - **Semantic Memory**: LanceDB vector database with AI embeddings for intelligent context retrieval
 - **Smart Context**: Retrieves relevant conversation history based on meaning, not just recency
 - **Semantic Search**: Search through conversation history using natural language queries
@@ -20,20 +21,22 @@ An intelligent AI cohost for VTuber streams that uses Claude AI, Whisper CPP for
 TwitchCoHost/
 ├── src/
 │   ├── services/
-│   │   ├── claude.ts       # Claude AI integration
-│   │   ├── embeddings.ts   # Vector embeddings for semantic search
-│   │   ├── memory.ts       # LanceDB-powered conversation memory
-│   │   ├── whisper.ts      # Whisper CPP speech-to-text
-│   │   ├── tts.ts          # Text-to-speech engines
-│   │   ├── obs.ts          # OBS WebSocket controller
-│   │   └── twitch.ts       # Twitch chat integration
-│   ├── types.ts            # TypeScript type definitions
-│   ├── config.ts           # Configuration loader
-│   ├── cohost.ts           # Main CoHost orchestrator
-│   └── index.ts            # Application entry point
-├── memory/                 # LanceDB vector database (auto-created)
-├── .env                    # Your configuration (not in git)
-├── .env.example            # Example configuration
+│   │   ├── claude.ts         # Claude AI integration + emotion detection
+│   │   ├── embeddings.ts     # Vector embeddings for semantic search
+│   │   ├── memory.ts         # LanceDB-powered conversation memory
+│   │   ├── whisper.ts        # Whisper CPP speech-to-text
+│   │   ├── tts.ts            # Text-to-speech engines
+│   │   ├── obs.ts            # OBS WebSocket controller
+│   │   ├── twitch.ts         # Twitch chat integration
+│   │   └── vtube-studio.ts   # VTube Studio API controller
+│   ├── types.ts              # TypeScript type definitions
+│   ├── config.ts             # Configuration loader
+│   ├── cohost.ts             # Main CoHost orchestrator
+│   └── index.ts              # Application entry point
+├── memory/                   # LanceDB vector database (auto-created)
+├── VTUBE_STUDIO_SETUP.md     # VTube Studio setup guide
+├── .env                      # Your configuration (not in git)
+├── .env.example              # Example configuration
 └── package.json
 ```
 
@@ -49,6 +52,7 @@ TwitchCoHost/
 
 ### Optional
 
+- **VTube Studio** - For avatar integration ($15 on Steam + $15 for iOS tracking app)
 - **ElevenLabs API Key** - For high-quality text-to-speech
 
 ## Installation
@@ -139,9 +143,23 @@ MEMORY_CONTEXT_WINDOW=20
 COHOST_NAME=CoHost
 COHOST_PERSONALITY=friendly and helpful AI assistant
 RESPONSE_COOLDOWN_MS=3000
+
+# VTube Studio (optional)
+VTUBE_STUDIO_ENABLED=true
+VTUBE_STUDIO_URL=ws://localhost:8001
 ```
 
-### 6. Build and Run
+### 6. Set Up VTube Studio (Optional)
+
+See the complete [VTube Studio Setup Guide](VTUBE_STUDIO_SETUP.md) for detailed instructions.
+
+Quick setup:
+1. Open VTube Studio
+2. Settings → General → Enable "Allow 3rd party apps"
+3. Set `VTUBE_STUDIO_ENABLED=true` in `.env`
+4. Start CoHost - it will request permission to connect
+
+### 7. Build and Run
 
 ```bash
 # Build TypeScript
@@ -261,28 +279,56 @@ The CoHost uses **LanceDB**, an open-source vector database, for intelligent mem
   - Privacy-friendly - all data stays on your machine
   - Fast and efficient
 
-## Integration with VTuber Software
+## VTube Studio Integration
 
-### VTube Studio / VSeeFace
+The CoHost automatically controls your VTube Studio avatar based on AI emotions!
 
-To integrate with VTuber software:
-
-1. **Audio Routing**: Use virtual audio cables to route microphone audio
-2. **Voice Processing**: Save audio chunks and send to CoHost's Whisper integration
-3. **Response Output**: Use TTS to play responses through speakers
-
-### Example Integration Flow
+### How It Works
 
 ```
-User speaks → Mic → VTuber Software → Audio File
-                                          ↓
-                                    Whisper CPP
-                                          ↓
-                                    Claude AI
-                                          ↓
-                                    TTS Engine → Speakers
-                                          ↓
-                                    Twitch Chat (optional)
+Chat: "That's amazing!"
+  ↓
+AI Response: "I know right! This is so exciting!"
+  ↓
+Emotion Detection: happy (85% confidence)
+  ↓
+VTube Studio: Activates "happy" expression + "wave" animation
+```
+
+### Supported Emotions
+
+The system automatically detects these emotions and changes your avatar:
+
+- **Happy** → Happy/smile expressions, wave/clap animations
+- **Sad** → Sad/cry expressions, sigh animation
+- **Surprised** → Surprised/shock expressions, gasp/jump animations
+- **Confused** → Confused/thinking expressions, tilt_head animation
+- **Angry** → Angry expressions, shake_head animation
+- **Love** → Heart/blush expressions
+- **Neutral** → Default/idle expression
+
+### Setup Requirements
+
+1. **VTube Studio** running with API enabled
+2. **Live2D Model** with expressions matching emotion names
+3. **Optional**: Hotkeys for animations (wave, clap, gasp, etc.)
+
+See [VTUBE_STUDIO_SETUP.md](VTUBE_STUDIO_SETUP.md) for the complete setup guide.
+
+### Example Workflow
+
+```
+Viewer: "What's your favorite game?"
+  ↓
+AI thinks & responds: "Oh, that's a great question!"
+  ↓
+Emotion: happy (detected from "Oh" and "!")
+  ↓
+Avatar: Switches to happy expression + triggers "think" animation
+  ↓
+TTS: Speaks the response with lip sync
+  ↓
+Twitch: Sends message to chat
 ```
 
 ## Troubleshooting
