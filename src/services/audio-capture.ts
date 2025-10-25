@@ -87,6 +87,10 @@ export class AudioCaptureService extends EventEmitter {
         silence: '0', // Disable automatic silence detection (VAD handles this)
       }).stream();
 
+      if (!this.micStream) {
+        throw new Error('Failed to initialize microphone stream');
+      }
+
       // Process audio chunks from microphone
       this.micStream.on('data', async (chunk: Buffer) => {
         // Convert Int16 PCM buffer to Float32Array

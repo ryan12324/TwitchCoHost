@@ -11,6 +11,7 @@ interface MessageRecord {
   source?: string;
   username?: string;
   vector: number[];
+  [key: string]: any;
 }
 
 /**
@@ -19,7 +20,7 @@ interface MessageRecord {
 export class MemoryService {
   private config: Config;
   private db: lancedb.Connection | null = null;
-  private table: lancedb.Table | null = null;
+  private table: any = null;
   private embeddings = getEmbeddingService();
   private isInitialized: boolean = false;
   private dbPath: string;

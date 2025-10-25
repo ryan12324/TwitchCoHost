@@ -1,11 +1,11 @@
-import { pipeline, Pipeline } from '@xenova/transformers';
+import { pipeline } from '@xenova/transformers';
 
 /**
  * Embedding service using local transformer models
  * Generates vector embeddings for semantic search
  */
 export class EmbeddingService {
-  private embedder: Pipeline | null = null;
+  private embedder: any = null;
   private modelName: string = 'Xenova/all-MiniLM-L6-v2';
   private isInitialized: boolean = false;
   private initPromise: Promise<void> | null = null;
@@ -67,7 +67,7 @@ export class EmbeddingService {
       });
 
       // Convert to array
-      const embedding = Array.from(output.data);
+      const embedding = Array.from(output.data) as number[];
       return embedding;
     } catch (error) {
       console.error('[Embeddings] Error generating embedding:', error);
