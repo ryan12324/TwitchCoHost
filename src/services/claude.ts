@@ -193,4 +193,87 @@ Remember: You are speaking in a live stream context, so be conversational and ti
       animations: topEmotion.animations,
     };
   }
+
+  /**
+   * Determine if a message warrants a response from the AI
+   * Uses Claude to analyze if the message is directed at the cohost or requires engagement
+   */
+  async shouldRespond(message: string, context?: string): Promise<{
+    shouldRespond: boolean;
+    reason: string;
+    confidence: number;
+  }> {
+    try {
+      const prompt = `You are analyzing a message to determine if the AI cohost should respond to it.
+
+Message: "${message}"
+
+${context ? `Recent context:\n${context}` : ''}
+
+Analyze if this message:
+1. Is a direct question or statement to the cohost
+2. Requires a response to keep conversation flowing
+3. Is interesting/relevant enough to engage with
+4. Would benefit the stream if responded to
+
+Respond with ONLY a JSON object in this exact format:
+{
+  "shouldRespond": true/false,
+  "reason": "brief explanation",
+  "confidence": 0.0-1.0
+}
+
+Examples:
+- "what game are you playing?" -> {"shouldRespond": true, "reason": "direct question", "confidence": 0.9}
+- "lol" -> {"shouldRespond": false, "reason": "just a reaction", "confidence": 0.8}
+- "hey cohost, how are you?" -> {"shouldRespond": true, "reason": "direct greeting", "confidence": 1.0}
+- "gg" -> {"shouldRespond": false, "reason": "common chat reaction", "confidence": 0.9}
+- "can you explain that?" -> {"shouldRespond": true, "reason": "request for clarification", "confidence": 0.95}`;
+
+      const response = await this.client.messages.create({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 150,
+        messages: [{
+          role: 'user',
+          content: prompt,
+        }],
+      });
+
+      const textContent = response.content.find(block => block.type === 'text');
+      if (!textContent || textContent.type !== 'text') {
+        // Default to not responding if analysis fails
+        return {
+          shouldRespond: false,
+          reason: 'Analysis failed',
+          confidence: 0.5,
+        };
+      }
+
+      // Parse JSON response
+      const jsonMatch = textContent.text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const result = JSON.parse(jsonMatch[0]);
+        return {
+          shouldRespond: result.shouldRespond || false,
+          reason: result.reason || 'Unknown',
+          confidence: result.confidence || 0.5,
+        };
+      }
+
+      // Fallback
+      return {
+        shouldRespond: false,
+        reason: 'Could not parse analysis',
+        confidence: 0.5,
+      };
+    } catch (error) {
+      console.error('[Claude] Error in shouldRespond analysis:', error);
+      // Default to not responding on error to avoid spam
+      return {
+        shouldRespond: false,
+        reason: 'Error in analysis',
+        confidence: 0.3,
+      };
+    }
+  }
 }

@@ -49,6 +49,9 @@ export function loadConfig(): Config {
       name: process.env.COHOST_NAME || 'CoHost',
       personality: process.env.COHOST_PERSONALITY || 'friendly and helpful AI assistant',
       responseCooldown: parseInt(process.env.RESPONSE_COOLDOWN_MS || '3000'),
+      wakeWord: process.env.WAKE_WORD || 'hey cohost',
+      wakeWordEnabled: process.env.WAKE_WORD_ENABLED !== 'false',
+      smartResponseFilter: process.env.SMART_RESPONSE_FILTER !== 'false',
     },
     vtubeStudio: {
       websocketUrl: process.env.VTUBE_STUDIO_URL || 'ws://localhost:8001',

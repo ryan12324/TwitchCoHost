@@ -137,31 +137,79 @@ export class CoHost {
       return;
     }
 
-    // Avoid responding to every single message - only respond to questions or mentions
-    const message = chatMessage.message.toLowerCase();
-    const shouldRespond =
-      message.includes('?') ||
-      message.includes(this.config.cohost.name.toLowerCase()) ||
-      message.includes('cohost') ||
-      message.includes('@' + this.config.twitch.botUsername.toLowerCase());
+    // Always add to memory
+    await this.memory.addMessage({
+      role: 'user',
+      content: `${chatMessage.username}: ${chatMessage.message}`,
+      timestamp: chatMessage.timestamp,
+      source: 'chat',
+      username: chatMessage.username,
+    });
 
-    if (!shouldRespond) {
-      // Still add to memory but don't respond
-      await this.memory.addMessage({
-        role: 'user',
-        content: `${chatMessage.username}: ${chatMessage.message}`,
-        timestamp: chatMessage.timestamp,
-        source: 'chat',
-        username: chatMessage.username,
-      });
+    // Check if wake word is detected
+    const hasWakeWord = this.detectWakeWord(chatMessage.message);
+
+    if (this.config.cohost.wakeWordEnabled && hasWakeWord) {
+      console.log(`[CoHost] Wake word detected! Responding to: "${chatMessage.message}"`);
+      await this.processInput(
+        chatMessage.message,
+        'chat',
+        chatMessage.username
+      );
       return;
     }
 
+    // If wake word is enabled but not detected, don't respond
+    if (this.config.cohost.wakeWordEnabled && !hasWakeWord) {
+      console.log(`[CoHost] No wake word in: "${chatMessage.message}" - skipping`);
+      return;
+    }
+
+    // If smart response filter is enabled, use AI to decide
+    if (this.config.cohost.smartResponseFilter) {
+      const context = await this.memory.getContextSummary();
+      const analysis = await this.claude.shouldRespond(chatMessage.message, context);
+
+      console.log(
+        `[CoHost] AI analysis: ${analysis.shouldRespond ? 'RESPOND' : 'SKIP'} - ${analysis.reason} (confidence: ${(analysis.confidence * 100).toFixed(0)}%)`
+      );
+
+      if (!analysis.shouldRespond) {
+        return;
+      }
+    }
+
+    // Respond to the message
     await this.processInput(
       chatMessage.message,
       'chat',
       chatMessage.username
     );
+  }
+
+  /**
+   * Detect if a message contains the wake word
+   */
+  private detectWakeWord(message: string): boolean {
+    const messageLower = message.toLowerCase();
+    const wakeWord = this.config.cohost.wakeWord.toLowerCase();
+
+    // Check for exact wake word match
+    if (messageLower.includes(wakeWord)) {
+      return true;
+    }
+
+    // Also check for bot name mentions
+    if (messageLower.includes(this.config.cohost.name.toLowerCase())) {
+      return true;
+    }
+
+    // Check for @mention
+    if (messageLower.includes('@' + this.config.twitch.botUsername.toLowerCase())) {
+      return true;
+    }
+
+    return false;
   }
 
   private async handleSpecialEvent(eventType: string, message: string): Promise<void> {
@@ -286,10 +334,33 @@ export class CoHost {
       console.log('[CoHost] Transcribing audio...');
       const transcription = await this.whisper.transcribe(audioFilePath);
 
-      if (transcription.text.trim()) {
-        console.log(`[Voice] Transcribed: "${transcription.text}"`);
-        await this.processInput(transcription.text, 'voice');
+      if (!transcription.text.trim()) {
+        return;
       }
+
+      console.log(`[Voice] Transcribed: "${transcription.text}"`);
+
+      // Check for wake word in voice input
+      const hasWakeWord = this.detectWakeWord(transcription.text);
+
+      if (this.config.cohost.wakeWordEnabled && !hasWakeWord) {
+        console.log(`[CoHost] No wake word in voice input - skipping`);
+        // Still add to memory for context
+        await this.memory.addMessage({
+          role: 'user',
+          content: transcription.text,
+          timestamp: new Date(),
+          source: 'voice',
+        });
+        return;
+      }
+
+      if (hasWakeWord) {
+        console.log(`[CoHost] Wake word detected in voice!`);
+      }
+
+      // Process the voice input
+      await this.processInput(transcription.text, 'voice');
     } catch (error) {
       console.error('[CoHost] Error processing voice input:', error);
     }

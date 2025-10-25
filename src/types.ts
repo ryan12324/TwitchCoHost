@@ -28,6 +28,9 @@ export interface Config {
     name: string;
     personality: string;
     responseCooldown: number;
+    wakeWord: string;
+    wakeWordEnabled: boolean;
+    smartResponseFilter: boolean;
   };
   vtubeStudio: {
     websocketUrl: string;
