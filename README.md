@@ -4,7 +4,8 @@ An intelligent AI cohost for VTuber streams that uses Claude AI, Whisper CPP for
 
 ## Features
 
-- **🎤 Real-Time Voice Capture**: Hands-free audio capture with Voice Activity Detection (VAD)
+- **🎤 Real-Time Voice Capture**: Hands-free audio capture with optimized Real-Time VAD (Voice Activity Detection)
+- **⚡ Low-Latency Processing**: Powered by @ericedouard/vad-node-realtime for live streaming
 - **🌐 Web Dashboard**: Beautiful real-time monitoring and control interface
 - **🤖 AI Responses**: Powered by Claude AI (Anthropic) for natural, contextual conversations
 - **🎭 VTube Studio Integration**: Automatic avatar expressions and animations based on AI emotion detection
@@ -14,6 +15,8 @@ An intelligent AI cohost for VTuber streams that uses Claude AI, Whisper CPP for
 - **📹 OBS Control**: Control OBS scenes, sources, and streaming/recording via WebSocket
 - **🔊 Text-to-Speech**: Multiple TTS options (browser, system, ElevenLabs)
 - **🎉 Event Handling**: React to subscriptions, cheers, raids, and other Twitch events
+- **🎯 Wake Word Detection**: Optional activation via custom wake words (e.g., "hey cohost")
+- **🧠 Smart Response Filter**: AI-powered decision making on when to respond
 
 ## Architecture
 
@@ -65,6 +68,37 @@ TwitchCoHost/
 git clone <your-repo-url>
 cd TwitchCoHost
 npm install
+```
+
+### 1.5. Install Audio Recording Software (sox)
+
+The Real-Time VAD requires `sox` for microphone capture:
+
+**Windows:**
+```powershell
+# Using Chocolatey
+choco install sox
+
+# Or download from http://sox.sourceforge.net/
+```
+
+**Mac:**
+```bash
+brew install sox
+```
+
+**Linux:**
+```bash
+# Ubuntu/Debian
+sudo apt-get install sox libsox-fmt-all
+
+# Fedora/RHEL
+sudo dnf install sox
+```
+
+Test sox installation:
+```bash
+sox --version
 ```
 
 ### 2. Set Up Whisper CPP
@@ -227,16 +261,18 @@ Then open your browser to: **http://localhost:3000**
 
 ### Voice Capture Mode 🎤
 
-The system automatically:
+The system uses **Real-Time Voice Activity Detection** for hands-free operation:
 
 1. **Listens** - Continuously monitors your microphone
-2. **Detects** - Uses VAD to know when you start speaking
+2. **Detects** - Uses optimized Real-Time VAD to know when you start speaking
 3. **Records** - Captures your speech automatically
 4. **Transcribes** - Sends to Whisper CPP when you pause
 5. **Responds** - AI generates response and avatar reacts
 6. **Speaks** - TTS reads the response back
 
 **No buttons needed - just talk naturally!**
+
+> 📚 **Learn more:** See [REALTIME_VAD.md](REALTIME_VAD.md) for detailed information about voice detection, configuration, and troubleshooting.
 
 ### Basic Operation
 
@@ -272,11 +308,14 @@ Example semantic search:
 
 ### Chat Interaction
 
-The CoHost will respond to:
+The CoHost intelligently decides when to respond based on:
 
-- Questions (messages containing "?")
-- Direct mentions (containing the bot's name or "@botname")
-- Messages containing "cohost"
+- **Wake Word Detection** - Responds when specific phrases are detected (e.g., "hey cohost")
+- **Smart AI Filtering** - Uses Claude to analyze if messages warrant a response
+- **Direct Mentions** - Always responds to @mentions or bot name
+- **Questions** - Detects and responds to questions
+
+> 📚 **Learn more:** See [WAKE_WORD_GUIDE.md](WAKE_WORD_GUIDE.md) for detailed wake word and smart filtering configuration.
 
 ### OBS Control
 
@@ -294,6 +333,27 @@ Supported commands:
 - Start/stop recording
 
 ## Advanced Features
+
+### Real-Time Voice Activity Detection
+
+The system uses **@ericedouard/vad-node-realtime**, a specialized VAD optimized for live streaming:
+
+**Key Features:**
+- ⚡ Low-latency processing for real-time streams
+- 🎯 Accurate speech detection with Silero VAD model
+- 🔧 Customizable sensitivity and thresholds
+- 📊 Real-time audio level visualization
+- 🖥️ Completely offline processing
+
+**Tuning VAD Sensitivity:**
+Edit `src/services/audio-capture.ts`:
+```typescript
+positiveSpeechThreshold: 0.6  // Higher = less sensitive
+negativeSpeechThreshold: 0.4  // Lower = more aggressive
+minSpeechFrames: 4            // Minimum frames for speech
+```
+
+> 📚 **Full Documentation:** [REALTIME_VAD.md](REALTIME_VAD.md) - Complete guide to VAD configuration, troubleshooting, and optimization
 
 ### Speech Recognition Integration
 
@@ -502,8 +562,11 @@ MIT License - See LICENSE file for details
 - **LanceDB** - Open-source vector database
 - **Transformers.js** - Local AI embeddings
 - **Whisper CPP** by Georgi Gerganov
+- **@ericedouard/vad-node-realtime** - Real-time voice activity detection
+- **Silero VAD** - Voice activity detection model
 - **OBS WebSocket** by the OBS Project
 - **TMI.js** for Twitch chat
+- **VTube Studio** by DenchiSoft
 
 ## Support
 
@@ -514,11 +577,12 @@ For issues and questions:
 
 ## Roadmap
 
-- [ ] Web dashboard for monitoring
-- [ ] Voice activity detection (VAD) for automatic transcription
+- [x] Web dashboard for monitoring ✅
+- [x] Voice activity detection (VAD) for automatic transcription ✅
+- [x] Wake word detection and smart response filtering ✅
 - [ ] Multiple language support
 - [ ] Plugin system for extensions
-- [ ] Emotion detection from voice
+- [ ] Emotion detection from voice tone/pitch
 - [ ] Automated clip creation
 - [ ] Stream analytics integration
 - [ ] Multi-platform support (YouTube, Discord)
