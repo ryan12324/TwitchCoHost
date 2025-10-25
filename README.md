@@ -42,6 +42,8 @@ TwitchCoHost/
 
 ## Prerequisites
 
+> **Windows Users:** See the complete [Windows Setup Guide](WINDOWS_SETUP.md) for detailed Windows-specific instructions!
+
 ### Required
 
 1. **Node.js** (v18 or higher)
@@ -66,6 +68,33 @@ npm install
 ```
 
 ### 2. Set Up Whisper CPP
+
+#### Windows Installation
+
+```bash
+# 1. Clone whisper.cpp
+git clone https://github.com/ggerganov/whisper.cpp.git
+cd whisper.cpp
+
+# 2. Build with CMake (requires Visual Studio or MinGW)
+mkdir build
+cd build
+cmake ..
+cmake --build . --config Release
+
+# 3. Download a model (base.en is recommended for English)
+cd ..
+cd models
+.\download-ggml-model.cmd base.en
+
+# Note the paths (update these in your .env file):
+# - Binary: C:\path\to\whisper.cpp\build\bin\Release\main.exe
+# - Model: C:\path\to\whisper.cpp\models\ggml-base.en.bin
+```
+
+**Alternative:** Download pre-built Windows binaries from the [Whisper.cpp Releases](https://github.com/ggerganov/whisper.cpp/releases) page.
+
+#### Linux/Mac Installation
 
 ```bash
 # Clone whisper.cpp
@@ -124,9 +153,9 @@ TWITCH_OAUTH_TOKEN=oauth:your_token_here
 OBS_WEBSOCKET_URL=ws://localhost:4455
 OBS_WEBSOCKET_PASSWORD=your_password
 
-# Whisper CPP
-WHISPER_CPP_PATH=/path/to/whisper.cpp/main
-WHISPER_MODEL_PATH=/path/to/whisper.cpp/models/ggml-base.en.bin
+# Whisper CPP (Windows paths)
+WHISPER_CPP_PATH=C:\whisper.cpp\build\bin\Release\main.exe
+WHISPER_MODEL_PATH=C:\whisper.cpp\models\ggml-base.en.bin
 
 # TTS (options: browser, system, elevenlabs)
 TTS_ENGINE=browser
@@ -382,8 +411,16 @@ Twitch: Sends message to chat
 
 ```bash
 # Verify paths in .env
-# Test whisper manually:
+# Test whisper manually (Windows):
+C:\whisper.cpp\build\bin\Release\main.exe -m C:\whisper.cpp\models\ggml-base.en.bin -f audio.wav
+
+# Test whisper manually (Linux/Mac):
 /path/to/whisper.cpp/main -m /path/to/model.bin -f audio.wav
+
+# Common issues:
+# - Ensure backslashes (\) in Windows paths are not escaped
+# - Check that main.exe exists in the Release folder (not Debug)
+# - Verify the model file was downloaded successfully
 ```
 
 ### Twitch Connection Fails
