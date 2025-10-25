@@ -1,8 +1,9 @@
 import { EventEmitter } from 'events';
-import { MicVAD } from '@ricky0123/vad-node';
+import * as recorder from 'node-record-lpcm16';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Config } from '../types';
+const VAD = require('webrtcvad');
 
 interface AudioChunk {
   buffer: Buffer;
@@ -11,18 +12,34 @@ interface AudioChunk {
 }
 
 /**
- * Audio Capture Service with Voice Activity Detection
+ * Audio Capture Service with WebRTC Voice Activity Detection
  * Continuously monitors microphone and automatically transcribes speech
  */
 export class AudioCaptureService extends EventEmitter {
   private config: Config;
   private isRecording: boolean = false;
-  private audioBuffer: Buffer[] = [];
-  private recordingStartTime: Date | null = null;
-  private tempDir: string;
-  private vad: MicVAD | null = null;
-  private audioLevel: number = 0;
   private isSpeaking: boolean = false;
+  private tempDir: string;
+  private micStream: any = null;
+  private vad: any = null;
+  private audioLevel: number = 0;
+
+  // Speech detection state
+  private speechBuffer: Buffer[] = [];
+  private silenceFrames: number = 0;
+  private speechFrames: number = 0;
+  private recordingStartTime: Date | null = null;
+
+  // VAD configuration
+  private readonly SAMPLE_RATE = 16000;
+  private readonly FRAME_DURATION_MS = 30; // 30ms frames
+  private readonly FRAME_SIZE = (this.SAMPLE_RATE * this.FRAME_DURATION_MS) / 1000; // 480 samples
+  private readonly FRAME_SIZE_BYTES = this.FRAME_SIZE * 2; // 960 bytes (16-bit)
+  private readonly SPEECH_START_FRAMES = 3; // Frames of speech to start recording
+  private readonly SILENCE_END_FRAMES = 10; // Frames of silence to end recording
+  private readonly VAD_MODE = 3; // 0-3, 3 is most aggressive
+
+  private audioBuffer: Buffer = Buffer.alloc(0);
 
   constructor(config: Config) {
     super();
@@ -38,7 +55,7 @@ export class AudioCaptureService extends EventEmitter {
   }
 
   /**
-   * Start continuous audio capture with VAD
+   * Start continuous audio capture with WebRTC VAD
    */
   async start(): Promise<void> {
     if (this.isRecording) {
@@ -46,30 +63,30 @@ export class AudioCaptureService extends EventEmitter {
       return;
     }
 
-    console.log('[AudioCapture] Starting microphone capture with VAD...');
+    console.log('[AudioCapture] Starting microphone capture with WebRTC VAD...');
 
     try {
-      // Initialize VAD
-      this.vad = await MicVAD.new({
-        // Sensitivity: lower = more sensitive
-        positiveSpeechThreshold: 0.8,
-        negativeSpeechThreshold: 0.5,
-        // How much audio to buffer before/after speech
-        redemptionFrames: 8,
-        // Sample rate (16kHz is optimal for Whisper)
-        frameSamples: 1536,
+      // Initialize WebRTC VAD
+      this.vad = new VAD(this.SAMPLE_RATE, this.VAD_MODE);
+      console.log(`[AudioCapture] VAD initialized (mode: ${this.VAD_MODE}, sample rate: ${this.SAMPLE_RATE}Hz)`);
 
-        onSpeechStart: () => {
-          this.handleSpeechStart();
-        },
+      // Start microphone capture
+      this.micStream = recorder.record({
+        sampleRate: this.SAMPLE_RATE,
+        channels: 1,
+        audioType: 'raw',
+        recorder: 'sox',
+        silence: '0', // Disable sox's silence detection, we use VAD
+      }).stream();
 
-        onSpeechEnd: (audio: Float32Array) => {
-          this.handleSpeechEnd(audio);
-        },
+      // Process audio chunks
+      this.micStream.on('data', (chunk: Buffer) => {
+        this.processAudioChunk(chunk);
+      });
 
-        onVADMisfire: () => {
-          console.log('[AudioCapture] VAD misfire - ignoring short audio');
-        },
+      this.micStream.on('error', (error: Error) => {
+        console.error('[AudioCapture] Microphone stream error:', error);
+        this.emit('error', error);
       });
 
       this.isRecording = true;
@@ -77,7 +94,7 @@ export class AudioCaptureService extends EventEmitter {
       console.log('[AudioCapture] Microphone capture started');
       console.log('[AudioCapture] Listening for speech...');
     } catch (error) {
-      console.log('[AudioCapture] Failed to start:', error);
+      console.error('[AudioCapture] Failed to start:', error);
       throw error;
     }
   }
@@ -92,16 +109,87 @@ export class AudioCaptureService extends EventEmitter {
 
     console.log('[AudioCapture] Stopping microphone capture...');
 
-    if (this.vad) {
-      this.vad.pause();
-      this.vad = null;
+    // Stop microphone
+    if (this.micStream) {
+      this.micStream.removeAllListeners();
+      recorder.stop();
+      this.micStream = null;
     }
 
+    // Clean up VAD
+    this.vad = null;
+
+    // Reset state
     this.isRecording = false;
-    this.audioBuffer = [];
+    this.audioBuffer = Buffer.alloc(0);
+    this.speechBuffer = [];
     this.isSpeaking = false;
+    this.silenceFrames = 0;
+    this.speechFrames = 0;
+
     this.emit('stopped');
     console.log('[AudioCapture] Stopped');
+  }
+
+  /**
+   * Process audio chunks and run VAD
+   */
+  private processAudioChunk(chunk: Buffer): void {
+    // Add to buffer
+    this.audioBuffer = Buffer.concat([this.audioBuffer, chunk]);
+
+    // Update audio level for visualization
+    this.updateAudioLevel(chunk);
+
+    // Process complete frames
+    while (this.audioBuffer.length >= this.FRAME_SIZE_BYTES) {
+      // Extract one frame
+      const frame = this.audioBuffer.subarray(0, this.FRAME_SIZE_BYTES);
+      this.audioBuffer = this.audioBuffer.subarray(this.FRAME_SIZE_BYTES);
+
+      // Run VAD on this frame
+      this.processFrame(frame);
+    }
+  }
+
+  /**
+   * Process a single audio frame with VAD
+   */
+  private processFrame(frame: Buffer): void {
+    try {
+      // Check if frame contains speech
+      const isSpeech = this.vad.process(frame);
+
+      if (isSpeech) {
+        this.speechFrames++;
+        this.silenceFrames = 0;
+
+        // Start recording if we have enough speech frames
+        if (!this.isSpeaking && this.speechFrames >= this.SPEECH_START_FRAMES) {
+          this.handleSpeechStart();
+        }
+
+        // Always add speech frames to buffer when speaking
+        if (this.isSpeaking) {
+          this.speechBuffer.push(frame);
+        }
+      } else {
+        this.silenceFrames++;
+        this.speechFrames = 0;
+
+        // Continue adding frames during silence (for context)
+        if (this.isSpeaking) {
+          this.speechBuffer.push(frame);
+
+          // End recording if we have enough silence
+          if (this.silenceFrames >= this.SILENCE_END_FRAMES) {
+            this.handleSpeechEnd();
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[AudioCapture] Error processing frame:', error);
+    }
   }
 
   /**
@@ -110,7 +198,8 @@ export class AudioCaptureService extends EventEmitter {
   private handleSpeechStart(): void {
     this.isSpeaking = true;
     this.recordingStartTime = new Date();
-    this.audioBuffer = [];
+    this.speechBuffer = [];
+    this.silenceFrames = 0;
 
     console.log('[AudioCapture] 🎤 Speech detected, recording...');
     this.emit('speechStart');
@@ -119,9 +208,7 @@ export class AudioCaptureService extends EventEmitter {
   /**
    * Handle speech end event
    */
-  private async handleSpeechEnd(audio: Float32Array): Promise<void> {
-    this.isSpeaking = false;
-
+  private async handleSpeechEnd(): Promise<void> {
     if (!this.recordingStartTime) {
       return;
     }
@@ -129,11 +216,13 @@ export class AudioCaptureService extends EventEmitter {
     const duration = Date.now() - this.recordingStartTime.getTime();
     console.log(`[AudioCapture] 🔇 Speech ended (${(duration / 1000).toFixed(1)}s)`);
 
-    // Convert Float32Array to Buffer (16-bit PCM)
-    const audioBuffer = this.float32ToInt16(audio);
+    this.isSpeaking = false;
+
+    // Combine all speech frames into one buffer
+    const audioData = Buffer.concat(this.speechBuffer);
 
     // Save to WAV file
-    const audioFile = await this.saveAudioChunk(audioBuffer);
+    const audioFile = await this.saveAudioChunk(audioData);
 
     // Emit event with audio file path
     this.emit('speechEnd', {
@@ -142,19 +231,28 @@ export class AudioCaptureService extends EventEmitter {
       timestamp: this.recordingStartTime,
     });
 
+    // Reset state
+    this.speechBuffer = [];
+    this.silenceFrames = 0;
+    this.speechFrames = 0;
     this.recordingStartTime = null;
   }
 
   /**
-   * Convert Float32Array to 16-bit PCM Buffer
+   * Update audio level for visualization
    */
-  private float32ToInt16(float32Array: Float32Array): Buffer {
-    const int16Array = new Int16Array(float32Array.length);
-    for (let i = 0; i < float32Array.length; i++) {
-      const s = Math.max(-1, Math.min(1, float32Array[i]));
-      int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  private updateAudioLevel(audioData: Buffer): void {
+    // Calculate RMS (Root Mean Square) for audio level
+    let sum = 0;
+    const samples = audioData.length / 2; // 16-bit samples
+
+    for (let i = 0; i < audioData.length; i += 2) {
+      const sample = audioData.readInt16LE(i) / 32768.0; // Normalize to -1.0 to 1.0
+      sum += sample * sample;
     }
-    return Buffer.from(int16Array.buffer);
+
+    const rms = Math.sqrt(sum / samples);
+    this.audioLevel = Math.min(100, Math.floor(rms * 300));
   }
 
   /**
@@ -165,7 +263,7 @@ export class AudioCaptureService extends EventEmitter {
     const filePath = path.join(this.tempDir, fileName);
 
     // Create WAV header (16kHz, 16-bit, mono)
-    const sampleRate = 16000;
+    const sampleRate = this.SAMPLE_RATE;
     const numChannels = 1;
     const bitsPerSample = 16;
 

@@ -29,3 +29,10 @@ declare module 'tmi.js' {
     on(event: string, handler: Function): void;
   }
 }
+
+declare module 'webrtcvad' {
+  export default class VAD {
+    constructor(sampleRate: number, mode: number);
+    process(audioFrame: Buffer): boolean;
+  }
+}
