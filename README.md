@@ -4,16 +4,16 @@ An intelligent AI cohost for VTuber streams that uses Claude AI, Whisper CPP for
 
 ## Features
 
-- **AI Responses**: Powered by Claude AI (Anthropic) for natural, contextual conversations
-- **VTube Studio Integration**: Automatic avatar expressions and animations based on AI emotion detection
-- **Semantic Memory**: LanceDB vector database with AI embeddings for intelligent context retrieval
-- **Smart Context**: Retrieves relevant conversation history based on meaning, not just recency
-- **Semantic Search**: Search through conversation history using natural language queries
-- **Speech Recognition**: Whisper CPP integration for transcribing voice input
-- **Chat Integration**: Read and respond to Twitch chat messages
-- **OBS Control**: Control OBS scenes, sources, and streaming/recording via WebSocket
-- **Text-to-Speech**: Multiple TTS options (browser, system, ElevenLabs)
-- **Event Handling**: React to subscriptions, cheers, raids, and other Twitch events
+- **🎤 Real-Time Voice Capture**: Hands-free audio capture with Voice Activity Detection (VAD)
+- **🌐 Web Dashboard**: Beautiful real-time monitoring and control interface
+- **🤖 AI Responses**: Powered by Claude AI (Anthropic) for natural, contextual conversations
+- **🎭 VTube Studio Integration**: Automatic avatar expressions and animations based on AI emotion detection
+- **🧠 Semantic Memory**: LanceDB vector database with AI embeddings for intelligent context retrieval
+- **🔍 Smart Context**: Retrieves relevant conversation history based on meaning, not just recency
+- **💬 Chat Integration**: Read and respond to Twitch chat messages in real-time
+- **📹 OBS Control**: Control OBS scenes, sources, and streaming/recording via WebSocket
+- **🔊 Text-to-Speech**: Multiple TTS options (browser, system, ElevenLabs)
+- **🎉 Event Handling**: React to subscriptions, cheers, raids, and other Twitch events
 
 ## Architecture
 
@@ -165,8 +165,11 @@ Quick setup:
 # Build TypeScript
 npm run build
 
-# Run the application
+# Run with CLI interface
 npm start
+
+# Run with Web Dashboard (Recommended!)
+npm run gui
 
 # Or for development with auto-reload
 npm run dev
@@ -174,15 +177,49 @@ npm run dev
 
 ## Usage
 
+### Web Dashboard Mode (Recommended) 🌐
+
+Start with the beautiful web interface:
+
+```bash
+npm run gui
+```
+
+Then open your browser to: **http://localhost:3000**
+
+**Features:**
+- 📊 Real-time service status monitoring
+- 🎤 Start/stop audio capture with one click
+- 💬 Live Twitch chat viewer
+- 📈 Statistics and uptime tracking
+- 🎨 Beautiful, responsive design
+- 🔴 Visual indicators for speech detection
+- 🎵 Audio level visualizer
+
+### Voice Capture Mode 🎤
+
+The system automatically:
+
+1. **Listens** - Continuously monitors your microphone
+2. **Detects** - Uses VAD to know when you start speaking
+3. **Records** - Captures your speech automatically
+4. **Transcribes** - Sends to Whisper CPP when you pause
+5. **Responds** - AI generates response and avatar reacts
+6. **Speaks** - TTS reads the response back
+
+**No buttons needed - just talk naturally!**
+
 ### Basic Operation
 
 Once started, the CoHost will:
 
-1. **Connect to OBS** - Control scenes and sources
-2. **Connect to Twitch** - Monitor chat and respond to messages
-3. **Process Chat Messages** - Respond to questions and mentions
-4. **Handle Special Events** - React to subs, cheers, raids
-5. **Accept Voice Input** - Transcribe and respond to voice (when implemented)
+1. **Connect to Services** - OBS, Twitch, VTube Studio
+2. **Initialize Memory** - Load conversation history
+3. **Start Audio Capture** - Begin listening (in GUI mode)
+4. **Monitor Chat** - Read Twitch messages
+5. **Process Input** - From voice or chat
+6. **Control Avatar** - Expressions match emotions
+7. **Respond Naturally** - Via chat and TTS
 
 ### CLI Commands
 

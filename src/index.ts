@@ -2,12 +2,16 @@
 
 import { loadConfig } from './config';
 import { CoHost } from './cohost';
+import { WebServer } from './web-server';
 import * as readline from 'readline';
 
 async function main() {
   console.log('='.repeat(60));
   console.log('🎮 VTuber CoHost - AI-Powered Stream Assistant');
   console.log('='.repeat(60));
+
+  // Check for GUI mode
+  const useGui = process.argv.includes('--gui');
 
   // Load configuration
   let config;
@@ -27,6 +31,24 @@ async function main() {
   } catch (error) {
     console.error('❌ Failed to start CoHost:', error);
     process.exit(1);
+  }
+
+  // Start web server if GUI mode
+  if (useGui) {
+    const webServer = new WebServer(cohost, 3000);
+    await webServer.start();
+
+    // Handle shutdown
+    process.on('SIGINT', async () => {
+      console.log('\n\nShutting down...');
+      await webServer.stop();
+      await cohost.stop();
+      process.exit(0);
+    });
+
+    // Keep process alive
+    console.log('Press Ctrl+C to exit\n');
+    return;
   }
 
   // Set up CLI interface for manual testing

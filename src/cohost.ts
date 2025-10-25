@@ -6,6 +6,7 @@ import { TTSService } from './services/tts';
 import { OBSController } from './services/obs';
 import { TwitchChatService } from './services/twitch';
 import { VTubeStudioController } from './services/vtube-studio';
+import { AudioCaptureService } from './services/audio-capture';
 
 export class CoHost {
   private config: Config;
@@ -16,6 +17,7 @@ export class CoHost {
   private obs: OBSController;
   private twitch: TwitchChatService;
   private vtubeStudio: VTubeStudioController;
+  private audioCapture: AudioCaptureService;
   private lastResponseTime: number = 0;
   private isProcessing: boolean = false;
 
@@ -30,6 +32,7 @@ export class CoHost {
     this.obs = new OBSController(config);
     this.twitch = new TwitchChatService(config);
     this.vtubeStudio = new VTubeStudioController(config);
+    this.audioCapture = new AudioCaptureService(config);
 
     this.setupEventHandlers();
   }
@@ -51,6 +54,12 @@ export class CoHost {
 
     this.twitch.on('raid', (data: any) => {
       this.handleSpecialEvent('raid', `${data.username} raided with ${data.viewers} viewers!`);
+    });
+
+    // Handle audio capture events
+    this.audioCapture.on('speechEnd', async (data: any) => {
+      console.log('[CoHost] Processing voice input...');
+      await this.processVoiceInput(data.filePath);
     });
   }
 
@@ -306,5 +315,44 @@ export class CoHost {
       throw new Error('OBS not connected');
     }
     return await this.obs.getCurrentScene();
+  }
+
+  // Audio capture controls
+  async startAudioCapture(): Promise<void> {
+    await this.audioCapture.start();
+  }
+
+  async stopAudioCapture(): Promise<void> {
+    await this.audioCapture.stop();
+  }
+
+  isAudioCaptureActive(): boolean {
+    return this.audioCapture.isActive();
+  }
+
+  isCurrentlySpeaking(): boolean {
+    return this.audioCapture.isCurrentlySpeaking();
+  }
+
+  // Service accessors for GUI
+  getServices() {
+    return {
+      obs: this.obs,
+      twitch: this.twitch,
+      vtubeStudio: this.vtubeStudio,
+      audioCapture: this.audioCapture,
+      memory: this.memory,
+    };
+  }
+
+  getServiceStatus() {
+    return {
+      obs: this.obs.isConnected(),
+      twitch: this.twitch.isConnected(),
+      vtubeStudio: this.config.vtubeStudio.enabled && this.vtubeStudio.isConnected(),
+      audioCapture: this.audioCapture.isActive(),
+      speaking: this.audioCapture.isCurrentlySpeaking(),
+      processing: this.isProcessing,
+    };
   }
 }
