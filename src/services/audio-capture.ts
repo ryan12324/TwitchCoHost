@@ -1,10 +1,8 @@
 import { EventEmitter } from 'events';
-import { RealTimeVAD } from '@ericedouard/vad-node-realtime';
-import * as recorder from 'node-record-lpcm16';
+import { MicVAD } from '@ricky0123/vad-node';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Config } from '../types';
-import { Readable } from 'stream';
 
 interface AudioChunk {
   buffer: Buffer;
@@ -13,17 +11,16 @@ interface AudioChunk {
 }
 
 /**
- * Audio Capture Service with Real-Time Voice Activity Detection
+ * Audio Capture Service with Voice Activity Detection
  * Continuously monitors microphone and automatically transcribes speech
  */
 export class AudioCaptureService extends EventEmitter {
   private config: Config;
   private isRecording: boolean = false;
-  private audioBuffer: Float32Array[] = [];
+  private audioBuffer: Buffer[] = [];
   private recordingStartTime: Date | null = null;
   private tempDir: string;
-  private vad: any = null; // RealTimeVAD instance
-  private micStream: Readable | null = null;
+  private vad: MicVAD | null = null;
   private audioLevel: number = 0;
   private isSpeaking: boolean = false;
 
@@ -41,7 +38,7 @@ export class AudioCaptureService extends EventEmitter {
   }
 
   /**
-   * Start continuous audio capture with Real-Time VAD
+   * Start continuous audio capture with VAD
    */
   async start(): Promise<void> {
     if (this.isRecording) {
@@ -49,18 +46,18 @@ export class AudioCaptureService extends EventEmitter {
       return;
     }
 
-    console.log('[AudioCapture] Starting microphone capture with Real-Time VAD...');
+    console.log('[AudioCapture] Starting microphone capture with VAD...');
 
     try {
-      // Initialize Real-Time VAD
-      this.vad = await RealTimeVAD.new({
+      // Initialize VAD
+      this.vad = await MicVAD.new({
+        // Sensitivity: lower = more sensitive
+        positiveSpeechThreshold: 0.8,
+        negativeSpeechThreshold: 0.5,
+        // How much audio to buffer before/after speech
+        redemptionFrames: 8,
         // Sample rate (16kHz is optimal for Whisper)
-        sampleRate: 16000,
-
-        // Sensitivity thresholds
-        positiveSpeechThreshold: 0.6,
-        negativeSpeechThreshold: 0.4,
-        minSpeechFrames: 4,
+        frameSamples: 1536,
 
         onSpeechStart: () => {
           this.handleSpeechStart();
@@ -75,47 +72,12 @@ export class AudioCaptureService extends EventEmitter {
         },
       });
 
-      // Start VAD processing
-      this.vad.start();
-
-      // Start microphone capture
-      this.micStream = recorder.record({
-        sampleRate: 16000,
-        channels: 1,
-        audioType: 'raw',
-        recorder: 'sox', // or 'rec' on Linux, 'sox' on Mac/Windows
-        silence: '0', // Disable automatic silence detection (VAD handles this)
-      }).stream();
-
-      if (!this.micStream) {
-        throw new Error('Failed to initialize microphone stream');
-      }
-
-      // Process audio chunks from microphone
-      this.micStream.on('data', async (chunk: Buffer) => {
-        // Convert Int16 PCM buffer to Float32Array
-        const float32Audio = this.int16ToFloat32(chunk);
-
-        // Feed to Real-Time VAD
-        if (this.vad) {
-          await this.vad.processAudio(float32Audio);
-        }
-
-        // Update audio level for visualization
-        this.updateAudioLevel(float32Audio);
-      });
-
-      this.micStream.on('error', (error: Error) => {
-        console.error('[AudioCapture] Microphone stream error:', error);
-        this.emit('error', error);
-      });
-
       this.isRecording = true;
       this.emit('started');
       console.log('[AudioCapture] Microphone capture started');
       console.log('[AudioCapture] Listening for speech...');
     } catch (error) {
-      console.error('[AudioCapture] Failed to start:', error);
+      console.log('[AudioCapture] Failed to start:', error);
       throw error;
     }
   }
@@ -130,21 +92,8 @@ export class AudioCaptureService extends EventEmitter {
 
     console.log('[AudioCapture] Stopping microphone capture...');
 
-    // Stop microphone stream
-    if (this.micStream) {
-      this.micStream.removeAllListeners();
-      recorder.stop();
-      this.micStream = null;
-    }
-
-    // Flush and destroy VAD
     if (this.vad) {
-      try {
-        await this.vad.flush();
-        this.vad.destroy();
-      } catch (error) {
-        console.error('[AudioCapture] Error stopping VAD:', error);
-      }
+      this.vad.pause();
       this.vad = null;
     }
 
@@ -197,21 +146,6 @@ export class AudioCaptureService extends EventEmitter {
   }
 
   /**
-   * Convert Int16 PCM Buffer to Float32Array
-   */
-  private int16ToFloat32(buffer: Buffer): Float32Array {
-    const int16Array = new Int16Array(buffer.buffer, buffer.byteOffset, buffer.length / 2);
-    const float32Array = new Float32Array(int16Array.length);
-
-    for (let i = 0; i < int16Array.length; i++) {
-      // Normalize int16 (-32768 to 32767) to float32 (-1.0 to 1.0)
-      float32Array[i] = int16Array[i] / (int16Array[i] < 0 ? 0x8000 : 0x7fff);
-    }
-
-    return float32Array;
-  }
-
-  /**
    * Convert Float32Array to 16-bit PCM Buffer
    */
   private float32ToInt16(float32Array: Float32Array): Buffer {
@@ -221,21 +155,6 @@ export class AudioCaptureService extends EventEmitter {
       int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
     }
     return Buffer.from(int16Array.buffer);
-  }
-
-  /**
-   * Update audio level for visualization
-   */
-  private updateAudioLevel(audioData: Float32Array): void {
-    // Calculate RMS (Root Mean Square) for audio level
-    let sum = 0;
-    for (let i = 0; i < audioData.length; i++) {
-      sum += audioData[i] * audioData[i];
-    }
-    const rms = Math.sqrt(sum / audioData.length);
-
-    // Convert to 0-100 scale (with some amplification for visibility)
-    this.audioLevel = Math.min(100, Math.floor(rms * 300));
   }
 
   /**
